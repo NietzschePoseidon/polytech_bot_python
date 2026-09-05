@@ -626,6 +626,19 @@ async def handle_schedule(
     except Exception as e:
         await send_message(context, chat_id, f"Ошибка получения расписания: {e}")
 
+async def handle_sdo(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
+    """Вывод ссылок на СДО по предметам."""
+    from sdo_links import SDO_LINKS
+    
+    if not SDO_LINKS:
+        await send_message(context, chat_id, "📭 Список ссылок на СДО пока пуст.")
+        return
+    
+    lines = ["🔗 **Ссылки на СДО:**\n"]
+    for subject, link in SDO_LINKS.items():
+        lines.append(f"• {subject} — {link}")
+    
+    await send_message(context, chat_id, "\n".join(lines))
 # ===================== Обработчик всех текстовых сообщений =====================
 
 
@@ -650,6 +663,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "📚 **Просмотр ДЗ и объявлений:**\n"
             "/hw — список всех будущих ДЗ\n"
             "/am — список всех объявлений\n\n"
+            "🔗 **СДО:**\n"
+            "/sdo — ссылки на СДО по предметам\n\n"
             "📝 **Предложить ДЗ или объявление:**\n"
             '/suggest hw ДД-ММ "Предмет: Описание"\n'
             '/suggest am ДД-ММ "Заголовок: Текст"\n\n'
@@ -824,7 +839,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await send_message(context, chat_id, "✅ Проверьте консоль.")
         else:
             await send_message(context, chat_id, "⛔ У вас нет прав.")
-
+    elif message_text == "/sdo":
+        await handle_sdo(context, chat_id)
     else:
         await send_message(context, chat_id, "Неизвестная команда. Используйте /start.")
 

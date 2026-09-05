@@ -260,7 +260,7 @@ class Database:
                 self._connection.execute(
                     "INSERT INTO homework (group_id, subject, description, deadline, created_at) "
                     "VALUES (?, ?, ?, ?, datetime('now'))",
-                    (row["group_id"], row["subject"], row["description"], row["deadline"]),
+                    (pending_id, row["group_id"], row["subject"], row["description"], row["deadline"]),
                 )
                 print("   ✅ Добавлено в homework")
                 self._connection.execute(
@@ -362,7 +362,7 @@ class Database:
                 self._connection.execute(
                     "INSERT INTO announcements (group_id, title, content, created_at) "
                     "VALUES (?, ?, ?, datetime('now'))",
-                    (row["group_id"], row["title"], row["content"]),
+                    (pending_id, row["group_id"], row["title"], row["content"]),
                 )
                 # Полностью удаляем заявку, а не просто меняем статус —
                 # чтобы её id не «висел» в pending_announcements навсегда.

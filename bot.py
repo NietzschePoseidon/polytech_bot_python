@@ -365,10 +365,11 @@ async def handle_announcement_list(context: ContextTypes.DEFAULT_TYPE, chat_id: 
 
         sb = ["📢 **Все объявления:**\n\n"]
         for ann in announcements:
-            sb.append(f"📢 **[{ann['id']}] {ann['title']}**\n")
-            sb.append(f"   {ann['content']}\n\n")
+            sb.append(f"**ID: {ann['id']}**\n")
+            sb.append(f"📢 {ann['title']}\n")
+            sb.append(f"📅 {ann['deadline']}\n\n")
 
-        sb.append("\n💡 Для удаления объявления используйте: /delete am ID")
+        sb.append("💡 Для удаления объявления используйте: /delete am ID")
         await send_message(context, chat_id, "".join(sb))
 
     except Exception as e:
@@ -427,7 +428,7 @@ async def handle_suggest_announcement(
 
     title, content = parts[0], parts[1]
 
-    pending_id = db.add_pending_announcement(group_id, title, content, chat_id)
+    pending_id = db.add_pending_announcement(group_id, title, content, deadline, chat_id)
     if pending_id != -1:
         await send_message(context, chat_id, f"✅ Объявление отправлено на модерацию! ID: {pending_id}")
         await notify_admins(
@@ -436,6 +437,7 @@ async def handle_suggest_announcement(
             f"ID: {pending_id}\n"
             f"📌 {title}\n"
             f"📝 {content}\n"
+            f"📅 Дедлайн: {deadline}\n"
             f"👤 от: {chat_id}\n\n"
             "Для модерации:\n"
             f"/approve am {pending_id}\n"

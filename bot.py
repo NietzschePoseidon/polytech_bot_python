@@ -103,46 +103,41 @@ async def handle_homework_list(context: ContextTypes.DEFAULT_TYPE, chat_id: int)
             return
 
         today = date.today()
-        sb = ["📚 **Список всех будущих ДЗ:**\n\n"]
-        has_future = False
-
+        
+        # СОРТИРОВКА: фильтруем будущие и сортируем по дате
+        future_homework = []
         for hw in homework:
             try:
                 day_str, month_str = hw.deadline.split("-")[:2]
                 day, month = int(day_str), int(month_str)
                 deadline_date = date(today.year, month, day)
-
                 if deadline_date < today:
                     deadline_date = deadline_date.replace(year=deadline_date.year + 1)
+                if deadline_date > today:
+                    future_homework.append((deadline_date, hw))
+            except Exception:
+                continue
+        
+        # Сортируем по дате
+        future_homework.sort(key=lambda x: x[0])
+        
+        if not future_homework:
+            await send_message(context, chat_id, "📭 На ближайшее время ДЗ нет.")
+            return
 
-                if deadline_date <= today:
-                    continue
+        sb = ["📚 **Список всех будущих ДЗ:**\n\n"]
+        for deadline_date, hw in future_homework:
+            three_days_later = today.toordinal() + 3
+            emoji = "📌" if deadline_date.toordinal() > three_days_later else "🔴"
+            days_left = (deadline_date - today).days
+            
+            sb.append(f"{emoji} **[{hw.id}] {hw.subject}**\n")
+            sb.append(f"   📝 {hw.description}\n")
+            sb.append(f"   📅 Дедлайн: {hw.deadline}")
+            sb.append(f" (осталось {days_left} дн.)\n")
+            sb.append("-------------------\n")
 
-                has_future = True
-
-                three_days_later_ord = (today.toordinal() + 3)
-                emoji = "📌"
-                if deadline_date.toordinal() <= three_days_later_ord:
-                    emoji = "🔴"
-
-                days_left = (deadline_date - today).days
-
-                # ДОБАВЛЕНО: ID в начале строки
-                sb.append(f"ID: {hw.id}\n")
-                sb.append(f"{emoji} **{hw.subject}**\n")
-                sb.append(f"   📝 {hw.description}\n")
-                sb.append(f"   📅 Дедлайн: {hw.deadline}")
-                sb.append(f" (осталось {days_left} дн.)\n")
-                sb.append("-------------------\n")
-
-            except Exception as e:
-                print(f"Ошибка парсинга ДЗ: {hw.deadline} | {e}")
-
-        if not has_future:
-            sb.append("📭 На ближайшее время ДЗ нет.\n")
-        else:
-            sb.append("\n💡 Для удаления ДЗ используйте: /delete hw ID")
-
+        sb.append("\n💡 Для удаления ДЗ используйте: /delete hw ID")
         await send_message(context, chat_id, "".join(sb))
 
     except Exception as e:
@@ -163,9 +158,31 @@ async def handle_announcement_list(context: ContextTypes.DEFAULT_TYPE, chat_id: 
             await send_message(context, chat_id, "📭 Объявлений пока нет.")
             return
 
-        sb = ["📢 Все объявления:\n\n"]
+        today = date.today()
+        
+        # СОРТИРОВКА: фильтруем будущие и сортируем по дате
+        future_announcements = []
         for ann in announcements:
-            sb.append(f"ID: {ann['id']}\n")
+            try:
+                day_str, month_str = ann["deadline"].split("-")[:2]
+                day, month = int(day_str), int(month_str)
+                deadline_date = date(today.year, month, day)
+                if deadline_date < today:
+                    deadline_date = deadline_date.replace(year=deadline_date.year + 1)
+                if deadline_date > today:
+                    future_announcements.append((deadline_date, ann))
+            except Exception:
+                continue
+        
+        future_announcements.sort(key=lambda x: x[0])
+        
+        if not future_announcements:
+            await send_message(context, chat_id, "📭 На ближайшее время объявлений нет.")
+            return
+
+        sb = ["📢 **Все объявления:**\n\n"]
+        for deadline_date, ann in future_announcements:
+            sb.append(f"**ID: {ann['id']}**\n")
             sb.append(f"📢 {ann['title']}\n")
             sb.append(f"📅 {ann['deadline']}\n\n")
 

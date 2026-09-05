@@ -92,6 +92,16 @@ class Database:
                     added_at TEXT
                 )"""
             )
+            cur.execute(
+                """CREATE TABLE IF NOT EXISTS announcements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    group_id INTEGER,
+                    title TEXT,
+                    content TEXT,
+                    deadline TEXT,  -- Добавлено: дата в формате dd-MM
+                    created_at TEXT
+                )"""
+            )
             self._connection.commit()
             print("✅ Таблицы БД созданы/проверены")
 
@@ -283,22 +293,25 @@ class Database:
             return cur.rowcount > 0
 
     # ===== Объявления =====
-    def add_announcement(self, group_id: int, title: str, content: str) -> None:
+    def add_announcement(self, group_id: int, title: str, content: str, deadline: str) -> None:
         with self._lock:
             self._connection.execute(
-                "INSERT INTO announcements (group_id, title, content, created_at) "
-                "VALUES (?, ?, ?, datetime('now'))",
-                (group_id, title, content),
+                "INSERT INTO announcements (group_id, title, content, deadline, created_at) "
+                "VALUES (?, ?, ?, ?, datetime('now'))",
+                (group_id, title, content, deadline),
             )
             self._connection.commit()
 
     def get_announcements_for_group(self, group_id: int) -> List[dict]:
         with self._lock:
             rows = self._connection.execute(
-                "SELECT id, title, content FROM announcements WHERE group_id = ?",
+                "SELECT id, title, content, deadline FROM announcements WHERE group_id = ?",
                 (group_id,)
             ).fetchall()
-            return [{"id": r["id"], "title": r["title"], "content": r["content"]} for r in rows]
+            return [
+                {"id": r["id"], "title": r["title"], "content": r["content"], "deadline": r["deadline"]}
+                for r in rows
+            ]
 
     def delete_announcement(self, announcement_id: int) -> bool:
         """
@@ -320,15 +333,15 @@ class Database:
 
     # ===== Предложения объявлений =====
     def add_pending_announcement(
-        self, group_id: int, title: str, content: str, suggested_by: int
+        self, group_id: int, title: str, content: str, deadline: str, suggested_by: int
     ) -> int:
         with self._lock:
             try:
                 cur = self._connection.execute(
                     "INSERT INTO pending_announcements "
-                    "(group_id, title, content, suggested_by, suggested_at, status) "
-                    "VALUES (?, ?, ?, ?, datetime('now'), 'pending')",
-                    (group_id, title, content, suggested_by),
+                    "(group_id, title, content, deadline, suggested_by, suggested_at, status) "
+                    "VALUES (?, ?, ?, ?, ?, datetime('now'), 'pending')",
+                    (group_id, title, content, deadline, suggested_by),
                 )
                 self._connection.commit()
                 return cur.lastrowid
@@ -354,22 +367,19 @@ class Database:
         with self._lock:
             try:
                 row = self._connection.execute(
-                    "SELECT group_id, title, content FROM pending_announcements WHERE id = ?",
+                    "SELECT group_id, title, content, deadline FROM pending_announcements WHERE id = ?",
                     (pending_id,),
                 ).fetchone()
                 if row is None:
                     return False
-
+    
                 self._connection.execute(
-                    "INSERT INTO announcements (group_id, title, content, created_at) "
-                    "VALUES (?, ?, ?, datetime('now'))",
-                    (row["group_id"], row["title"], row["content"]),
+                    "INSERT INTO announcements (group_id, title, content, deadline, created_at) "
+                    "VALUES (?, ?, ?, ?, datetime('now'))",
+                    (row["group_id"], row["title"], row["content"], row["deadline"]),
                 )
-                # Полностью удаляем заявку, а не просто меняем статус —
-                # чтобы её id не «висел» в pending_announcements навсегда.
                 self._connection.execute(
-                    "DELETE FROM pending_announcements WHERE id = ?",
-                    (pending_id,),
+                    "DELETE FROM pending_announcements WHERE id = ?", (pending_id,)
                 )
                 self._connection.commit()
                 return True

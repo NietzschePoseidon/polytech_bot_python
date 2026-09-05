@@ -102,9 +102,16 @@ async def send_daily_digest(context: ContextTypes.DEFAULT_TYPE) -> None:
             # 3. Объявления
             announcements = db.get_announcements_for_group(group_id)
             if announcements:
-                message_parts.append("\n📢 **Объявления:**\n")
+                message.append("\n📢 **Объявления:**\n")
                 for ann in announcements:
-                    message_parts.append(f"• {ann}\n")
+                    title = ann.get('title', '')
+                    content = ann.get('content', '')
+                    deadline = ann.get('deadline', '')
+                    
+                    message.append(f"📢 {title}\n")
+                    if content:
+                        message.append(f"   {content}\n")
+                    message.append(f"   📅 {deadline}\n\n")
 
             message_parts.append("\n---\n")
             message_parts.append("✅ Следите за обновлениями!")

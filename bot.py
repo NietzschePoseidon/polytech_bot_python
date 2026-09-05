@@ -176,8 +176,12 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     # ===== Предложения =====
     elif message_text.startswith("/suggest "):
-        parts = message_text.split(" ", 3)
-        if len(parts) < 2:
+        # Убираем "/suggest " и разбиваем остальное
+        rest = message_text[len("/suggest "):].strip()
+        
+        # Разделяем на тип, дату и текст
+        parts = rest.split(" ", 2)  # Разбиваем только по первым ДВУМ пробелам
+        if len(parts) < 3:
             await send_message(
                 context,
                 chat_id,
@@ -186,23 +190,22 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 '/suggest am dd-MM "Текст объявления"',
             )
             return
-
-        suggest_type = parts[1].lower()
-        if suggest_type == "hw" and len(parts) >= 4:
-            deadline = parts[2]
-            text = parts[3]
+    
+        suggest_type = parts[0].lower()  # hw или am
+        deadline = parts[1]              # dd-MM
+        text = parts[2].strip()          # ВСЁ, что после даты — полный текст
+    
+        if suggest_type == "hw":
             await handle_suggest_homework(context, chat_id, deadline, text)
-        elif suggest_type == "am" and len(parts) >= 4:
-            deadline = parts[2]
-            text = parts[3]
+        elif suggest_type == "am":
             await handle_suggest_announcement(context, chat_id, deadline, text)
         else:
             await send_message(
                 context,
                 chat_id,
                 "⚠️ Неверный формат.\n"
-                'ДЗ: /suggest hw dd-MM "Текст"\n'
-                'Объявление: /suggest am dd-MM "Текст"',
+                'ДЗ: /suggest hw dd-MM "Текст ДЗ"\n'
+                'Объявление: /suggest am dd-MM "Текст объявления"',
             )
 
     # ===== Модерация (только для админов) =====
@@ -413,38 +416,42 @@ async def handle_suggest_homework(
         await send_message(context, chat_id, "❌ Ошибка сохранения. Попробуйте позже.")
 
 
-async def handle_suggest_announcement(
-    context: ContextTypes.DEFAULT_TYPE, chat_id: int, deadline: str, text: str
-) -> None:
-    group_id = db.get_group_id(chat_id)
-    if group_id is None:
-        await send_message(context, chat_id, "⚠️ Сначала укажите группу: /setgroup Название_группы")
-        return
-
-    parts = text.split(" ", 1)
-    if len(parts) < 2:
-        await send_message(context, chat_id, '⚠️ Формат: /suggest am dd-MM "Заголовок: Текст"')
-        return
-
-    title, content = parts[0], parts[1]
-
-    pending_id = db.add_pending_announcement(group_id, title, content, deadline, chat_id)
-    if pending_id != -1:
-        await send_message(context, chat_id, f"✅ Объявление отправлено на модерацию! ID: {pending_id}")
-        await notify_admins(
-            context,
-            "📢 Новое предложение объявления\n"
-            f"ID: {pending_id}\n"
-            f"📌 {title}\n"
-            f"📝 {content}\n"
-            f"📅 Дедлайн: {deadline}\n"
-            f"👤 от: {chat_id}\n\n"
-            "Для модерации:\n"
-            f"/approve am {pending_id}\n"
-            f"/reject am {pending_id}",
-        )
-    else:
-        await send_message(context, chat_id, "❌ Ошибка сохранения. Попробуйте позже.")
+    async def handle_suggest_announcement(
+        context: ContextTypes.DEFAULT_TYPE, chat_id: int, deadline: str, full_text: str
+    ) -> None:
+        group_id = db.get_group_id(chat_id)
+        if group_id is None:
+            await send_message(context, chat_id, "⚠️ Сначала укажите группу: /setgroup Название_группы")
+            return
+    
+        # full_text — это всё, что после даты
+        # Можно оставить как есть, либо разделить на заголовок и текст по первому двоеточию
+        if ":" in full_text:
+            title, content = full_text.split(":", 1)
+            title = title.strip()
+            content = content.strip()
+        else:
+            # Если нет двоеточия — весь текст считается объявлением
+            title = full_text
+            content = ""
+    
+        pending_id = db.add_pending_announcement(group_id, title, content, deadline, chat_id)
+        if pending_id != -1:
+            await send_message(context, chat_id, f"✅ Объявление отправлено на модерацию! ID: {pending_id}")
+            await notify_admins(
+                context,
+                "📢 Новое предложение объявления\n"
+                f"ID: {pending_id}\n"
+                f"📌 {title}\n"
+                f"📝 {content}\n"
+                f"📅 Дедлайн: {deadline}\n"
+                f"👤 от: {chat_id}\n\n"
+                "Для модерации:\n"
+                f"/approve am {pending_id}\n"
+                f"/reject am {pending_id}",
+            )
+        else:
+            await send_message(context, chat_id, "❌ Ошибка сохранения. Попробуйте позже.")
 
 
 # ===== Модерация =====

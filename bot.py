@@ -327,6 +327,8 @@ async def handle_homework_list(context: ContextTypes.DEFAULT_TYPE, chat_id: int)
 
                 days_left = (deadline_date - today).days
 
+                # ДОБАВЛЕНО: ID в начале строки
+                sb.append(f"ID: {hw.id}\n")
                 sb.append(f"{emoji} **{hw.subject}**\n")
                 sb.append(f"   📝 {hw.description}\n")
                 sb.append(f"   📅 Дедлайн: {hw.deadline}")
@@ -338,6 +340,8 @@ async def handle_homework_list(context: ContextTypes.DEFAULT_TYPE, chat_id: int)
 
         if not has_future:
             sb.append("📭 На ближайшее время ДЗ нет.\n")
+        else:
+            sb.append("\n💡 Для удаления ДЗ используйте: /delete hw ID")
 
         await send_message(context, chat_id, "".join(sb))
 
@@ -361,7 +365,7 @@ async def handle_announcement_list(context: ContextTypes.DEFAULT_TYPE, chat_id: 
 
         sb = ["📢 **Все объявления:**\n\n"]
         for i, ann in enumerate(announcements, start=1):
-            sb.append(f"{i}. {ann}\n")
+            sb.append(f"ID: {pending_id}\n{ann}\n")
 
         await send_message(context, chat_id, "".join(sb))
 

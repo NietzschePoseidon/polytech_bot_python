@@ -16,6 +16,7 @@ import formatting
 import ruz_client
 from database import Database
 
+from bot import db
 
 async def send_daily_digest(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Ежедневная рассылка в 18:00."""

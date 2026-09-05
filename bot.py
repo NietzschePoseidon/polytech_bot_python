@@ -221,7 +221,6 @@ async def handle_suggest_announcement(
         await send_message(context, chat_id, "⚠️ Сначала укажите группу: /setgroup Название_группы")
         return
 
-    # full_text — это всё, что после даты
     if ":" in full_text:
         title, content = full_text.split(":", 1)
         title = title.strip()

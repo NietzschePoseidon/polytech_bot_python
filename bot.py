@@ -125,13 +125,14 @@ async def handle_homework_list(context: ContextTypes.DEFAULT_TYPE, chat_id: int)
             await send_message(context, chat_id, "📭 На ближайшее время ДЗ нет.")
             return
 
-        sb = ["📚 **Список всех будущих ДЗ:**\n\n"]
+        sb = ["📚 Список всех будущих ДЗ:\n\n"]
         for deadline_date, hw in future_homework:
             three_days_later = today.toordinal() + 3
             emoji = "📌" if deadline_date.toordinal() > three_days_later else "🔴"
             days_left = (deadline_date - today).days
-            
-            sb.append(f"{emoji} **[{hw.id}] {hw.subject}**\n")
+
+            sb.append(f"ID: {hw.id}\n")
+            sb.append(f"{emoji} **{hw.subject}**\n")
             sb.append(f"   📝 {hw.description}\n")
             sb.append(f"   📅 Дедлайн: {hw.deadline}")
             sb.append(f" (осталось {days_left} дн.)\n")
@@ -180,9 +181,9 @@ async def handle_announcement_list(context: ContextTypes.DEFAULT_TYPE, chat_id: 
             await send_message(context, chat_id, "📭 На ближайшее время объявлений нет.")
             return
 
-        sb = ["📢 **Все объявления:**\n\n"]
+        sb = ["📢 Все объявления:\n\n"]
         for deadline_date, ann in future_announcements:
-            sb.append(f"**ID: {ann['id']}**\n")
+            sb.append(f"ID: {ann['id']}\n")
             sb.append(f"📢 {ann['title']}\n")
             sb.append(f"📅 {ann['deadline']}\n\n")
 

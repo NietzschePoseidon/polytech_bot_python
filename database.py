@@ -31,6 +31,7 @@ class Database:
         self._connection.row_factory = sqlite3.Row
         self._lock = threading.RLock()
         self._create_tables()
+        self._migrate_announcements()
 
     def _create_tables(self) -> None:
         with self._lock:
@@ -167,6 +168,28 @@ class Database:
             rows = self._connection.execute("SELECT chat_id FROM users").fetchall()
             return [int(r["chat_id"]) for r in rows]
 
+    def _migrate_announcements(self) -> None:
+        """Добавляет колонку deadline, если её нет."""
+        with self._lock:
+            try:
+                self._connection.execute("ALTER TABLE announcements ADD COLUMN deadline TEXT")
+                print("✅ Добавлена колонка deadline в announcements")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" in str(e):
+                    print("ℹ️ Колонка deadline уже есть в announcements")
+                else:
+                    print(f"⚠️ Ошибка: {e}")
+            
+            try:
+                self._connection.execute("ALTER TABLE pending_announcements ADD COLUMN deadline TEXT")
+                print("✅ Добавлена колонка deadline в pending_announcements")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" in str(e):
+                    print("ℹ️ Колонка deadline уже есть в pending_announcements")
+                else:
+                    print(f"⚠️ Ошибка: {e}")
+            self._connection.commit()
+            
     # ===== Домашние задания =====
     def add_homework(self, group_id: int, subject: str, description: str, deadline: str) -> None:
         with self._lock:

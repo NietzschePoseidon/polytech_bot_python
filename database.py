@@ -103,6 +103,25 @@ class Database:
                     created_at TEXT
                 )"""
             )
+            try:
+                cur.execute("ALTER TABLE announcements ADD COLUMN deadline TEXT")
+                print("✅ Добавлена колонка deadline в таблицу announcements")
+            except sqlite3.OperationalError as e:
+                # Колонка уже существует — игнорируем
+                if "duplicate column name" in str(e):
+                    print("ℹ️ Колонка deadline уже существует")
+                else:
+                    print(f"⚠️ Ошибка при добавлении колонки: {e}")
+            
+            # Аналогично для pending_announcements
+            try:
+                cur.execute("ALTER TABLE pending_announcements ADD COLUMN deadline TEXT")
+                print("✅ Добавлена колонка deadline в таблицу pending_announcements")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" in str(e):
+                    print("ℹ️ Колонка deadline уже существует в pending_announcements")
+                else:
+                    print(f"⚠️ Ошибка при добавлении колонки: {e}")
             self._connection.commit()
             print("✅ Таблицы БД созданы/проверены")
 

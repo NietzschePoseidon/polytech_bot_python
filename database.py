@@ -263,21 +263,14 @@ class Database:
                     (row["group_id"], row["subject"], row["description"], row["deadline"]),
                 )
                 print("   ✅ Добавлено в homework")
-
-                # Полностью убираем заявку из pending_homework, а не просто
-                # меняем статус — иначе она навсегда остаётся в таблице
-                # со своим (никак не связанным) id, что мешает /delete.
-                cur = self._connection.execute(
+                self._connection.execute(
                     "DELETE FROM pending_homework WHERE id = ?", (pending_id,)
                 )
-                print(f"   ✅ Удалено из pending_homework: {cur.rowcount} записей")
-
                 self._connection.commit()
-                print("   ✅ Транзакция подтверждена")
                 return True
             except sqlite3.Error as e:
                 self._connection.rollback()
-                print(f"❌ Транзакция откачена: {e}")
+                print(f"❌ Ошибка approve_pending_homework: {e}")
                 return False
 
     def reject_pending_homework(self, pending_id: int) -> bool:

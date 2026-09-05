@@ -163,9 +163,9 @@ async def handle_announcement_list(context: ContextTypes.DEFAULT_TYPE, chat_id: 
             await send_message(context, chat_id, "📭 Объявлений пока нет.")
             return
 
-        sb = ["📢 **Все объявления:**\n\n"]
+        sb = ["📢 Все объявления:\n\n"]
         for ann in announcements:
-            sb.append(f"**ID: {ann['id']}**\n")
+            sb.append(f"ID: {ann['id']}\n")
             sb.append(f"📢 {ann['title']}\n")
             sb.append(f"📅 {ann['deadline']}\n\n")
 

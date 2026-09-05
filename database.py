@@ -79,6 +79,7 @@ class Database:
                     group_id INTEGER,
                     title TEXT,
                     content TEXT,
+                    deadline TEXT,  -- Добавлено
                     suggested_by INTEGER,
                     suggested_at TEXT,
                     status TEXT DEFAULT 'pending'

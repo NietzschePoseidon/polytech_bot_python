@@ -52,209 +52,6 @@ async def get_schedule_for_date(group_id: int, on_date: date) -> str:
         return f"❌ Ошибка получения расписания: {e}"
 
 
-# ===================== Обработчик всех текстовых сообщений =====================
-
-
-async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message or not update.message.text:
-        return
-
-    message_text = update.message.text
-    chat_id = update.effective_chat.id
-
-    if message_text == "/start":
-        response = (
-            "🤖 **Привет! Я бот для расписания СПбПУ.**\n\n"
-            "📌 **Основные команды:**\n"
-            "/schedule — расписание на сегодня\n"
-            "/schedule ДД-ММ — расписание на конкретный день\n"
-            "/schedule week — расписание на текущую неделю\n"
-            "/schedule week ДД-ММ — расписание на неделю с датой\n"
-            "/setgroup Название_группы — выбрать группу\n"
-            "/subscribe — подписаться на рассылку\n"
-            "/unsubscribe — отписаться от рассылки\n\n"
-            "📚 **Просмотр ДЗ и объявлений:**\n"
-            "/hw — список всех будущих ДЗ\n"
-            "/am — список всех объявлений\n\n"
-            "📝 **Предложить ДЗ или объявление:**\n"
-            '/suggest hw ДД-ММ "Предмет: Описание"\n'
-            '/suggest am ДД-ММ "Заголовок: Текст"\n\n'
-            "📌 **Примеры:**\n"
-            '/suggest hw 10-09 "Математика: Решить задачи 1-10"\n'
-            '/suggest am 11-09 "Собрание: Встреча в 14:00"\n\n'
-            "👑 **Если вы администратор, напишите /admin_help**\n\n"
-            "💡 **Стать администратором:** попросите главного админа добавить вас командой /add_admin_by_id ID"
-        )
-        await send_message(context, chat_id, response)
-
-    elif message_text == "/admin_help":
-        await handle_admin_help(context, chat_id)
-
-    elif message_text == "/hw":
-        await handle_homework_list(context, chat_id)
-
-    elif message_text == "/am":
-        await handle_announcement_list(context, chat_id)
-
-    elif message_text.startswith("/setgroup "):
-        group_name = message_text[len("/setgroup "):].strip()
-        await handle_set_group(context, chat_id, group_name)
-
-    elif _NUMBER_RE.match(message_text) and chat_id in _search_results(context):
-        await handle_group_selection(context, chat_id, int(message_text))
-
-    elif message_text.startswith("/schedule"):
-        parts = message_text.split(" ")
-
-        if len(parts) == 1:
-            # /schedule — сегодня
-            await handle_schedule(context, chat_id, None)
-        elif parts[1].lower() == "week":
-            if len(parts) == 2:
-                # /schedule week — текущая неделя
-                await handle_schedule_week(context, chat_id, None)
-            else:
-                # /schedule week 13-09 — неделя, в которую входит дата
-                try:
-                    day_str, month_str = parts[2].split("-")
-                    parsed = date.today().replace(month=int(month_str), day=int(day_str))
-                    await handle_schedule_week(context, chat_id, parsed)
-                except Exception:
-                    await send_message(
-                        context, chat_id, "⚠️ Неверный формат даты. Используйте: /schedule week 13-09"
-                    )
-        else:
-            # /schedule 13-09 — конкретный день
-            try:
-                day_str, month_str = parts[1].split("-")
-                parsed = date.today().replace(month=int(month_str), day=int(day_str))
-                await handle_schedule(context, chat_id, parsed)
-            except Exception:
-                await send_message(
-                    context, chat_id, "⚠️ Неверный формат даты. Используйте: /schedule 04-09"
-                )
-
-    elif message_text == "/subscribe":
-        group_id = db.get_group_id(chat_id)
-        if group_id is not None:
-            db.save_user(chat_id, group_id, "")
-            await send_message(context, chat_id, "✅ Вы подписаны на рассылку!")
-        else:
-            await send_message(
-                context, chat_id, "⚠️ Сначала укажите группу: /setgroup Название_группы"
-            )
-
-    elif message_text == "/unsubscribe":
-        db.delete_user(chat_id)
-        await send_message(context, chat_id, "❌ Вы отписаны от рассылки.")
-
-    elif message_text == "/test_send":
-        if db.is_admin(chat_id):
-            await digest_scheduler.send_daily_digest(context)
-            await send_message(context, chat_id, "✅ Тестовая рассылка запущена!")
-        else:
-            await send_message(context, chat_id, "⛔ У вас нет прав на эту команду.")
-
-    elif message_text.startswith("/add_admin_by_id "):
-        id_str = message_text[len("/add_admin_by_id "):].strip()
-        await handle_add_admin(context, chat_id, id_str)
-
-    elif message_text.startswith("/add_admin "):
-        input_str = message_text[len("/add_admin "):].strip()
-        await handle_add_admin(context, chat_id, input_str)
-
-    elif message_text.startswith("/remove_admin_by_id "):
-        id_str = message_text[len("/remove_admin_by_id "):].strip()
-        await handle_remove_admin(context, chat_id, id_str)
-
-    elif message_text.startswith("/remove_admin "):
-        input_str = message_text[len("/remove_admin "):].strip()
-        await handle_remove_admin(context, chat_id, input_str)
-
-    elif message_text == "/admins":
-        await handle_list_admins(context, chat_id)
-
-    # ===== Предложения =====
-    elif message_text.startswith("/suggest "):
-        # Убираем "/suggest " и разбиваем остальное
-        rest = message_text[len("/suggest "):].strip()
-        
-        # Разделяем на тип, дату и текст
-        parts = rest.split(" ", 2)  # Разбиваем только по первым ДВУМ пробелам
-        if len(parts) < 3:
-            await send_message(
-                context,
-                chat_id,
-                "⚠️ Используйте:\n"
-                '/suggest hw dd-MM "Текст ДЗ"\n'
-                '/suggest am dd-MM "Текст объявления"',
-            )
-            return
-    
-        suggest_type = parts[0].lower()  # hw или am
-        deadline = parts[1]              # dd-MM
-        text = parts[2].strip()          # ВСЁ, что после даты — полный текст
-    
-        if suggest_type == "hw":
-            await handle_suggest_homework(context, chat_id, deadline, text)
-        elif suggest_type == "am":
-            await handle_suggest_announcement(context, chat_id, deadline, text)
-        else:
-            await send_message(
-                context,
-                chat_id,
-                "⚠️ Неверный формат.\n"
-                'ДЗ: /suggest hw dd-MM "Текст ДЗ"\n'
-                'Объявление: /suggest am dd-MM "Текст объявления"',
-            )
-
-    # ===== Модерация (только для админов) =====
-    elif message_text.startswith("/pending"):
-        await handle_pending(context, chat_id)
-
-    elif message_text.startswith("/approve "):
-        parts = message_text.split(" ")
-        if len(parts) == 3:
-            suggest_type = parts[1].lower()
-            try:
-                item_id = int(parts[2])
-                await handle_approve(context, chat_id, suggest_type, item_id)
-            except ValueError:
-                pass
-
-    elif message_text.startswith("/reject "):
-        parts = message_text.split(" ")
-        if len(parts) == 3:
-            suggest_type = parts[1].lower()
-            try:
-                item_id = int(parts[2])
-                await handle_reject(context, chat_id, suggest_type, item_id)
-            except ValueError:
-                pass
-
-    elif message_text.startswith("/delete "):
-        parts = message_text.split(" ")
-        if len(parts) == 3:
-            suggest_type = parts[1].lower()
-            try:
-                item_id = int(parts[2])
-                await handle_delete(context, chat_id, suggest_type, item_id)
-            except ValueError:
-                await send_message(context, chat_id, "⚠️ Неверный ID. Введите число.")
-        else:
-            await send_message(context, chat_id, "⚠️ Используйте: /delete hw ID или /delete am ID")
-
-    elif message_text == "/debug_hw":
-        if db.is_admin(chat_id):
-            db.debug_homework()
-            await send_message(context, chat_id, "✅ Проверьте консоль.")
-        else:
-            await send_message(context, chat_id, "⛔ У вас нет прав.")
-
-    else:
-        await send_message(context, chat_id, "Неизвестная команда. Используйте /start.")
-
-
 # ===================== Обработчики (порт private-методов PolytechBot.java) =====================
 
 
@@ -416,43 +213,49 @@ async def handle_suggest_homework(
         await send_message(context, chat_id, "❌ Ошибка сохранения. Попробуйте позже.")
 
 
-    async def handle_suggest_announcement(
-        context: ContextTypes.DEFAULT_TYPE, chat_id: int, deadline: str, full_text: str
-    ) -> None:
-        group_id = db.get_group_id(chat_id)
-        if group_id is None:
-            await send_message(context, chat_id, "⚠️ Сначала укажите группу: /setgroup Название_группы")
-            return
-    
-        # full_text — это всё, что после даты
-        # Можно оставить как есть, либо разделить на заголовок и текст по первому двоеточию
-        if ":" in full_text:
-            title, content = full_text.split(":", 1)
-            title = title.strip()
-            content = content.strip()
-        else:
-            # Если нет двоеточия — весь текст считается объявлением
-            title = full_text
-            content = ""
-    
-        pending_id = db.add_pending_announcement(group_id, title, content, deadline, chat_id)
-        if pending_id != -1:
-            await send_message(context, chat_id, f"✅ Объявление отправлено на модерацию! ID: {pending_id}")
-            await notify_admins(
-                context,
-                "📢 Новое предложение объявления\n"
-                f"ID: {pending_id}\n"
-                f"📌 {title}\n"
-                f"📝 {content}\n"
-                f"📅 Дедлайн: {deadline}\n"
-                f"👤 от: {chat_id}\n\n"
-                "Для модерации:\n"
-                f"/approve am {pending_id}\n"
-                f"/reject am {pending_id}",
-            )
-        else:
-            await send_message(context, chat_id, "❌ Ошибка сохранения. Попробуйте позже.")
+async def handle_suggest_announcement(
+    context: ContextTypes.DEFAULT_TYPE, chat_id: int, deadline: str, full_text: str
+) -> None:
+    group_id = db.get_group_id(chat_id)
+    if group_id is None:
+        await send_message(context, chat_id, "⚠️ Сначала укажите группу: /setgroup Название_группы")
+        return
 
+    # full_text — это всё, что после даты
+    if ":" in full_text:
+        title, content = full_text.split(":", 1)
+        title = title.strip()
+        content = content.strip()
+    else:
+        title = full_text
+        content = ""
+
+    pending_id = db.add_pending_announcement(group_id, title, content, deadline, chat_id)
+    if pending_id != -1:
+        await send_message(context, chat_id, f"✅ Объявление отправлено на модерацию! ID: {pending_id}")
+        await notify_admins(
+            context,
+            "📢 Новое предложение объявления\n"
+            f"ID: {pending_id}\n"
+            f"📌 {title}\n"
+            f"📝 {content}\n"
+            f"📅 Дедлайн: {deadline}\n"
+            f"👤 от: {chat_id}\n\n"
+            "Для модерации:\n"
+            f"/approve am {pending_id}\n"
+            f"/reject am {pending_id}",
+        )
+    else:
+        await send_message(context, chat_id, "❌ Ошибка сохранения. Попробуйте позже.")
+
+async def notify_admins(context: ContextTypes.DEFAULT_TYPE, message: str) -> None:
+    admins = db.get_all_admins()
+    for admin_info in admins:
+        try:
+            admin_id = int(admin_info.split(" ")[0])
+            await send_message(context, admin_id, f"🔔 {message}")
+        except Exception as e:
+            print(e)
 
 # ===== Модерация =====
 
@@ -806,6 +609,207 @@ async def handle_schedule(
     except Exception as e:
         await send_message(context, chat_id, f"Ошибка получения расписания: {e}")
 
+# ===================== Обработчик всех текстовых сообщений =====================
+
+
+async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not update.message.text:
+        return
+
+    message_text = update.message.text
+    chat_id = update.effective_chat.id
+
+    if message_text == "/start":
+        response = (
+            "🤖 **Привет! Я бот для расписания СПбПУ.**\n\n"
+            "📌 **Основные команды:**\n"
+            "/schedule — расписание на сегодня\n"
+            "/schedule ДД-ММ — расписание на конкретный день\n"
+            "/schedule week — расписание на текущую неделю\n"
+            "/schedule week ДД-ММ — расписание на неделю с датой\n"
+            "/setgroup Название_группы — выбрать группу\n"
+            "/subscribe — подписаться на рассылку\n"
+            "/unsubscribe — отписаться от рассылки\n\n"
+            "📚 **Просмотр ДЗ и объявлений:**\n"
+            "/hw — список всех будущих ДЗ\n"
+            "/am — список всех объявлений\n\n"
+            "📝 **Предложить ДЗ или объявление:**\n"
+            '/suggest hw ДД-ММ "Предмет: Описание"\n'
+            '/suggest am ДД-ММ "Заголовок: Текст"\n\n'
+            "📌 **Примеры:**\n"
+            '/suggest hw 10-09 "Математика: Решить задачи 1-10"\n'
+            '/suggest am 11-09 "Собрание: Встреча в 14:00"\n\n'
+            "👑 **Если вы администратор, напишите /admin_help**\n\n"
+            "💡 **Стать администратором:** попросите главного админа добавить вас командой /add_admin_by_id ID"
+        )
+        await send_message(context, chat_id, response)
+
+    elif message_text == "/admin_help":
+        await handle_admin_help(context, chat_id)
+
+    elif message_text == "/hw":
+        await handle_homework_list(context, chat_id)
+
+    elif message_text == "/am":
+        await handle_announcement_list(context, chat_id)
+
+    elif message_text.startswith("/setgroup "):
+        group_name = message_text[len("/setgroup "):].strip()
+        await handle_set_group(context, chat_id, group_name)
+
+    elif _NUMBER_RE.match(message_text) and chat_id in _search_results(context):
+        await handle_group_selection(context, chat_id, int(message_text))
+
+    elif message_text.startswith("/schedule"):
+        parts = message_text.split(" ")
+
+        if len(parts) == 1:
+            # /schedule — сегодня
+            await handle_schedule(context, chat_id, None)
+        elif parts[1].lower() == "week":
+            if len(parts) == 2:
+                # /schedule week — текущая неделя
+                await handle_schedule_week(context, chat_id, None)
+            else:
+                # /schedule week 13-09 — неделя, в которую входит дата
+                try:
+                    day_str, month_str = parts[2].split("-")
+                    parsed = date.today().replace(month=int(month_str), day=int(day_str))
+                    await handle_schedule_week(context, chat_id, parsed)
+                except Exception:
+                    await send_message(
+                        context, chat_id, "⚠️ Неверный формат даты. Используйте: /schedule week 13-09"
+                    )
+        else:
+            # /schedule 13-09 — конкретный день
+            try:
+                day_str, month_str = parts[1].split("-")
+                parsed = date.today().replace(month=int(month_str), day=int(day_str))
+                await handle_schedule(context, chat_id, parsed)
+            except Exception:
+                await send_message(
+                    context, chat_id, "⚠️ Неверный формат даты. Используйте: /schedule 04-09"
+                )
+
+    elif message_text == "/subscribe":
+        group_id = db.get_group_id(chat_id)
+        if group_id is not None:
+            db.save_user(chat_id, group_id, "")
+            await send_message(context, chat_id, "✅ Вы подписаны на рассылку!")
+        else:
+            await send_message(
+                context, chat_id, "⚠️ Сначала укажите группу: /setgroup Название_группы"
+            )
+
+    elif message_text == "/unsubscribe":
+        db.delete_user(chat_id)
+        await send_message(context, chat_id, "❌ Вы отписаны от рассылки.")
+
+    elif message_text == "/test_send":
+        if db.is_admin(chat_id):
+            await digest_scheduler.send_daily_digest(context)
+            await send_message(context, chat_id, "✅ Тестовая рассылка запущена!")
+        else:
+            await send_message(context, chat_id, "⛔ У вас нет прав на эту команду.")
+
+    elif message_text.startswith("/add_admin_by_id "):
+        id_str = message_text[len("/add_admin_by_id "):].strip()
+        await handle_add_admin(context, chat_id, id_str)
+
+    elif message_text.startswith("/add_admin "):
+        input_str = message_text[len("/add_admin "):].strip()
+        await handle_add_admin(context, chat_id, input_str)
+
+    elif message_text.startswith("/remove_admin_by_id "):
+        id_str = message_text[len("/remove_admin_by_id "):].strip()
+        await handle_remove_admin(context, chat_id, id_str)
+
+    elif message_text.startswith("/remove_admin "):
+        input_str = message_text[len("/remove_admin "):].strip()
+        await handle_remove_admin(context, chat_id, input_str)
+
+    elif message_text == "/admins":
+        await handle_list_admins(context, chat_id)
+
+    # ===== Предложения =====
+    elif message_text.startswith("/suggest "):
+        # Убираем "/suggest " и разбиваем остальное
+        rest = message_text[len("/suggest "):].strip()
+        
+        # Разделяем на тип, дату и текст
+        parts = rest.split(" ", 2)  # Разбиваем только по первым ДВУМ пробелам
+        if len(parts) < 3:
+            await send_message(
+                context,
+                chat_id,
+                "⚠️ Используйте:\n"
+                '/suggest hw dd-MM "Текст ДЗ"\n'
+                '/suggest am dd-MM "Текст объявления"',
+            )
+            return
+    
+        suggest_type = parts[0].lower()  # hw или am
+        deadline = parts[1]              # dd-MM
+        text = parts[2].strip()          # ВСЁ, что после даты — полный текст
+    
+        if suggest_type == "hw":
+            await handle_suggest_homework(context, chat_id, deadline, text)
+        elif suggest_type == "am":
+            await handle_suggest_announcement(context, chat_id, deadline, text)
+        else:
+            await send_message(
+                context,
+                chat_id,
+                "⚠️ Неверный формат.\n"
+                'ДЗ: /suggest hw dd-MM "Текст ДЗ"\n'
+                'Объявление: /suggest am dd-MM "Текст объявления"',
+            )
+
+    # ===== Модерация (только для админов) =====
+    elif message_text.startswith("/pending"):
+        await handle_pending(context, chat_id)
+
+    elif message_text.startswith("/approve "):
+        parts = message_text.split(" ")
+        if len(parts) == 3:
+            suggest_type = parts[1].lower()
+            try:
+                item_id = int(parts[2])
+                await handle_approve(context, chat_id, suggest_type, item_id)
+            except ValueError:
+                pass
+
+    elif message_text.startswith("/reject "):
+        parts = message_text.split(" ")
+        if len(parts) == 3:
+            suggest_type = parts[1].lower()
+            try:
+                item_id = int(parts[2])
+                await handle_reject(context, chat_id, suggest_type, item_id)
+            except ValueError:
+                pass
+
+    elif message_text.startswith("/delete "):
+        parts = message_text.split(" ")
+        if len(parts) == 3:
+            suggest_type = parts[1].lower()
+            try:
+                item_id = int(parts[2])
+                await handle_delete(context, chat_id, suggest_type, item_id)
+            except ValueError:
+                await send_message(context, chat_id, "⚠️ Неверный ID. Введите число.")
+        else:
+            await send_message(context, chat_id, "⚠️ Используйте: /delete hw ID или /delete am ID")
+
+    elif message_text == "/debug_hw":
+        if db.is_admin(chat_id):
+            db.debug_homework()
+            await send_message(context, chat_id, "✅ Проверьте консоль.")
+        else:
+            await send_message(context, chat_id, "⛔ У вас нет прав.")
+
+    else:
+        await send_message(context, chat_id, "Неизвестная команда. Используйте /start.")
 
 # ===================== Точка входа =====================
 

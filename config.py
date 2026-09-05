@@ -30,7 +30,8 @@ BOT_USERNAME = os.environ.get("BOT_USERNAME", "Polytech_Bio_Shedule_bot")
 
 API_BASE = "https://ruz.spbstu.ru/api/v1/ruz"
 
-DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "bot.db"))
+# Если переменная окружения есть — используем её, иначе локальный путь
+DB_PATH = os.getenv("DB_PATH", "bot.db")
 
 # Время ежедневной рассылки (локальное время сервера, как и в Java-версии).
 DIGEST_HOUR = int(os.environ.get("DIGEST_HOUR", "18"))

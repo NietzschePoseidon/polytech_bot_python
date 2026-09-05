@@ -292,12 +292,13 @@ class Database:
             )
             self._connection.commit()
 
-    def get_announcements_for_group(self, group_id: int) -> List[str]:
+    def get_announcements_for_group(self, group_id: int) -> List[dict]:
         with self._lock:
             rows = self._connection.execute(
-                "SELECT title, content FROM announcements WHERE group_id = ?", (group_id,)
+                "SELECT id, title, content FROM announcements WHERE group_id = ?",
+                (group_id,)
             ).fetchall()
-            return [f"📢 {r['title']}\n   {r['content']}" for r in rows]
+            return [{"id": r["id"], "title": r["title"], "content": r["content"]} for r in rows]
 
     def delete_announcement(self, announcement_id: int) -> bool:
         """

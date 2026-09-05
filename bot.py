@@ -492,11 +492,17 @@ async def handle_approve(
         return
 
     if suggest_type == "hw":
-        db.approve_pending_homework(item_id)
-        await send_message(context, chat_id, f"✅ ДЗ ID {item_id} принято!")
+        ok = db.approve_pending_homework(item_id)
+        if ok:
+            await send_message(context, chat_id, f"✅ ДЗ ID {item_id} принято!")
+        else:
+            await send_message(context, chat_id, f"⚠️ Заявка на ДЗ с ID {item_id} не найдена (проверьте /pending).")
     elif suggest_type == "am":
-        db.approve_pending_announcement(item_id)
-        await send_message(context, chat_id, f"✅ Объявление ID {item_id} принято!")
+        ok = db.approve_pending_announcement(item_id)
+        if ok:
+            await send_message(context, chat_id, f"✅ Объявление ID {item_id} принято!")
+        else:
+            await send_message(context, chat_id, f"⚠️ Заявка на объявление с ID {item_id} не найдена (проверьте /pending).")
     else:
         await send_message(context, chat_id, "⚠️ Используйте: approve hw ID или approve am ID")
 
@@ -509,11 +515,17 @@ async def handle_reject(
         return
 
     if suggest_type == "hw":
-        db.reject_pending_homework(item_id)
-        await send_message(context, chat_id, f"❌ ДЗ ID {item_id} отклонено.")
+        ok = db.reject_pending_homework(item_id)
+        if ok:
+            await send_message(context, chat_id, f"❌ ДЗ ID {item_id} отклонено.")
+        else:
+            await send_message(context, chat_id, f"⚠️ Заявка на ДЗ с ID {item_id} не найдена (проверьте /pending).")
     elif suggest_type == "am":
-        db.reject_pending_announcement(item_id)
-        await send_message(context, chat_id, f"❌ Объявление ID {item_id} отклонено.")
+        ok = db.reject_pending_announcement(item_id)
+        if ok:
+            await send_message(context, chat_id, f"❌ Объявление ID {item_id} отклонено.")
+        else:
+            await send_message(context, chat_id, f"⚠️ Заявка на объявление с ID {item_id} не найдена (проверьте /pending).")
     else:
         await send_message(context, chat_id, "⚠️ Используйте: reject hw ID или reject am ID")
 
@@ -526,11 +538,27 @@ async def handle_delete(
         return
 
     if suggest_type == "hw":
-        db.delete_homework(item_id)
-        await send_message(context, chat_id, f"🗑️ ДЗ ID {item_id} удалено.")
+        deleted = db.delete_homework(item_id)
+        if deleted:
+            await send_message(context, chat_id, f"🗑️ ДЗ ID {item_id} удалено.")
+        else:
+            await send_message(
+                context,
+                chat_id,
+                f"⚠️ ДЗ с ID {item_id} не найдено в списке ДЗ (/hw). "
+                "Если это была ещё не одобренная заявка — используйте /reject hw ID.",
+            )
     elif suggest_type == "am":
-        db.delete_announcement(item_id)
-        await send_message(context, chat_id, f"🗑️ Объявление ID {item_id} удалено.")
+        deleted = db.delete_announcement(item_id)
+        if deleted:
+            await send_message(context, chat_id, f"🗑️ Объявление ID {item_id} удалено.")
+        else:
+            await send_message(
+                context,
+                chat_id,
+                f"⚠️ Объявление с ID {item_id} не найдено в списке объявлений (/am). "
+                "Если это была ещё не одобренная заявка — используйте /reject am ID.",
+            )
     else:
         await send_message(context, chat_id, "⚠️ Используйте: delete hw ID или delete am ID")
 

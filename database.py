@@ -167,23 +167,31 @@ class Database:
     def get_all_homework(self, group_id: int) -> List[HomeworkItem]:
         return self.get_homework_for_group(group_id)
 
-    def delete_homework(self, homework_id: int) -> None:
+    def delete_homework(self, homework_id: int) -> bool:
+        """
+        Удаляет ДЗ из основной таблицы homework по его id.
+
+        ВАЖНО: раньше здесь также удалялась запись с тем же числовым id из
+        pending_homework — но это две независимые последовательности
+        AUTOINCREMENT, и id могли случайно совпасть с СОВЕРШЕННО ДРУГОЙ,
+        ещё не рассмотренной заявкой на модерацию, которая от этого молча
+        исчезала. Плюс одобренные заявки никогда не удалялись из
+        pending_homework (только помечались статусом), поэтому их id не
+        имели отношения к id в homework. Теперь approve/reject сами
+        полностью удаляют строку из pending_homework (см. ниже), поэтому
+        /delete должен трогать только основную таблицу.
+
+        Возвращает True, если запись действительно была найдена и удалена.
+        """
         with self._lock:
             print(f"🗑️ Удаление ДЗ ID: {homework_id}")
             cur = self._connection.execute("DELETE FROM homework WHERE id = ?", (homework_id,))
+            self._connection.commit()
             if cur.rowcount > 0:
                 print("   ✅ Удалено из homework")
-            else:
-                print("   ⚠️ Не найдено в homework")
-
-            cur = self._connection.execute(
-                "DELETE FROM pending_homework WHERE id = ?", (homework_id,)
-            )
-            if cur.rowcount > 0:
-                print("   ✅ Удалено из pending_homework")
-            else:
-                print("   ⚠️ Не найдено в pending_homework")
-            self._connection.commit()
+                return True
+            print("   ⚠️ Не найдено в homework")
+            return False
 
     def debug_homework(self) -> None:
         with self._lock:
@@ -236,7 +244,7 @@ class Database:
                 for r in rows
             ]
 
-    def approve_pending_homework(self, pending_id: int) -> None:
+    def approve_pending_homework(self, pending_id: int) -> bool:
         with self._lock:
             try:
                 row = self._connection.execute(
@@ -245,7 +253,7 @@ class Database:
                 ).fetchone()
                 if row is None:
                     print(f"   ⚠️ ДЗ с ID {pending_id} не найдено в pending_homework")
-                    return
+                    return False
 
                 print(f"✅ Принято ДЗ: {row['subject']} | Дедлайн: {row['deadline']}")
 
@@ -256,23 +264,30 @@ class Database:
                 )
                 print("   ✅ Добавлено в homework")
 
+                # Полностью убираем заявку из pending_homework, а не просто
+                # меняем статус — иначе она навсегда остаётся в таблице
+                # со своим (никак не связанным) id, что мешает /delete.
                 cur = self._connection.execute(
-                    "UPDATE pending_homework SET status = 'approved' WHERE id = ?", (pending_id,)
+                    "DELETE FROM pending_homework WHERE id = ?", (pending_id,)
                 )
-                print(f"   ✅ Обновлен статус в pending_homework: {cur.rowcount} записей")
+                print(f"   ✅ Удалено из pending_homework: {cur.rowcount} записей")
 
                 self._connection.commit()
                 print("   ✅ Транзакция подтверждена")
+                return True
             except sqlite3.Error as e:
                 self._connection.rollback()
                 print(f"❌ Транзакция откачена: {e}")
+                return False
 
-    def reject_pending_homework(self, pending_id: int) -> None:
+    def reject_pending_homework(self, pending_id: int) -> bool:
+        """Полностью удаляет отклонённую заявку из pending_homework."""
         with self._lock:
-            self._connection.execute(
-                "UPDATE pending_homework SET status = 'rejected' WHERE id = ?", (pending_id,)
+            cur = self._connection.execute(
+                "DELETE FROM pending_homework WHERE id = ?", (pending_id,)
             )
             self._connection.commit()
+            return cur.rowcount > 0
 
     # ===== Объявления =====
     def add_announcement(self, group_id: int, title: str, content: str) -> None:
@@ -291,25 +306,23 @@ class Database:
             ).fetchall()
             return [f"📢 {r['title']}\n   {r['content']}" for r in rows]
 
-    def delete_announcement(self, announcement_id: int) -> None:
+    def delete_announcement(self, announcement_id: int) -> bool:
+        """
+        Удаляет объявление из основной таблицы announcements по его id.
+        См. комментарий в delete_homework — по той же причине здесь больше
+        не трогается pending_announcements по совпадающему числовому id.
+        """
         with self._lock:
             print(f"🗑️ Удаление объявления ID: {announcement_id}")
             cur = self._connection.execute(
                 "DELETE FROM announcements WHERE id = ?", (announcement_id,)
             )
+            self._connection.commit()
             if cur.rowcount > 0:
                 print("   ✅ Удалено из announcements")
-            else:
-                print("   ⚠️ Не найдено в announcements")
-
-            cur = self._connection.execute(
-                "DELETE FROM pending_announcements WHERE id = ?", (announcement_id,)
-            )
-            if cur.rowcount > 0:
-                print("   ✅ Удалено из pending_announcements")
-            else:
-                print("   ⚠️ Не найдено в pending_announcements")
-            self._connection.commit()
+                return True
+            print("   ⚠️ Не найдено в announcements")
+            return False
 
     # ===== Предложения объявлений =====
     def add_pending_announcement(
@@ -343,7 +356,7 @@ class Database:
                 for r in rows
             ]
 
-    def approve_pending_announcement(self, pending_id: int) -> None:
+    def approve_pending_announcement(self, pending_id: int) -> bool:
         with self._lock:
             try:
                 row = self._connection.execute(
@@ -351,28 +364,34 @@ class Database:
                     (pending_id,),
                 ).fetchone()
                 if row is None:
-                    return
+                    return False
 
                 self._connection.execute(
                     "INSERT INTO announcements (group_id, title, content, created_at) "
                     "VALUES (?, ?, ?, datetime('now'))",
                     (row["group_id"], row["title"], row["content"]),
                 )
+                # Полностью удаляем заявку, а не просто меняем статус —
+                # чтобы её id не «висел» в pending_announcements навсегда.
                 self._connection.execute(
-                    "UPDATE pending_announcements SET status = 'approved' WHERE id = ?",
+                    "DELETE FROM pending_announcements WHERE id = ?",
                     (pending_id,),
                 )
                 self._connection.commit()
+                return True
             except sqlite3.Error as e:
                 self._connection.rollback()
                 print(f"❌ Ошибка approve_pending_announcement: {e}")
+                return False
 
-    def reject_pending_announcement(self, pending_id: int) -> None:
+    def reject_pending_announcement(self, pending_id: int) -> bool:
+        """Полностью удаляет отклонённую заявку из pending_announcements."""
         with self._lock:
-            self._connection.execute(
-                "UPDATE pending_announcements SET status = 'rejected' WHERE id = ?", (pending_id,)
+            cur = self._connection.execute(
+                "DELETE FROM pending_announcements WHERE id = ?", (pending_id,)
             )
             self._connection.commit()
+            return cur.rowcount > 0
 
     # ===== Администраторы =====
     def add_admin(self, chat_id: int, username: str, added_by: int) -> None:

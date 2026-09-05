@@ -18,110 +18,108 @@ from database import Database
 
 
 async def send_daily_digest(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Порт Scheduler.sendDailyDigest()."""
-    db: Database = context.bot_data["db"]
-    bot = context.bot
-
+    """Ежедневная рассылка в 18:00."""
     print("📨 Запуск ежедневной рассылки...")
+    try:
+        subscribers = db.get_all_subscribers()
+        if not subscribers:
+            print("   Нет подписчиков.")
+            return
 
-    subscribers = db.get_all_subscribers()
-    if not subscribers:
-        print("   Нет подписчиков.")
-        return
+        tomorrow = date.today() + timedelta(days=1)
+        date_str = tomorrow.strftime("%d.%m.%Y")
 
-    tomorrow = date.today() + timedelta(days=1)
-    date_str = tomorrow.strftime("%d.%m.%Y")
-
-    for chat_id in subscribers:
-        try:
-            group_id = db.get_group_id(chat_id)
-            if group_id is None:
-                continue  # у пользователя нет группы
-
-            message_parts = []
-            message_parts.append("🔔 **Ежедневная рассылка**\n")
-            message_parts.append(f"📅 Расписание на **{date_str}**\n\n")
-
-            # 1. Расписание
+        sent_count = 0
+        for chat_id in subscribers:
             try:
-                schedule_json = ruz_client.get_schedule(group_id, tomorrow)
-                schedule_text = formatting.get_schedule_for_date(schedule_json, tomorrow)
-            except Exception as e:  # сеть/API может упасть — не роняем всю рассылку
-                schedule_text = f"❌ Ошибка получения расписания: {e}"
-            message_parts.append(schedule_text)
+                group_id = db.get_group_id(chat_id)
+                if group_id is None:
+                    continue
 
-            homework_items = db.get_homework_for_group(group_id)
-            print(f"📚 Найдено ДЗ для группы {group_id}: {len(homework_items)}")
+                # 1. Расписание
+                schedule_data = ruz_client.get_schedule(group_id, tomorrow)
+                schedule_text = formatting.format_single_day_schedule(schedule_data, tomorrow)
 
-            if homework_items:
-                message_parts.append("\n📚 **Домашние задания:**\n")
+                # 2. Домашние задания
+                homework_items = db.get_homework_for_group(group_id)
+                print(f"📚 Найдено ДЗ для группы {group_id}: {len(homework_items)}")
 
-                today = date.today()
-                three_days_later = today + timedelta(days=3)
-                has_homework = False
+                # 3. Объявления
+                announcements = db.get_announcements_for_group(group_id)
 
-                for hw in homework_items:
-                    try:
-                        day_str, month_str = hw.deadline.split("-")[:2]
-                        day, month = int(day_str), int(month_str)
+                # ФОРМИРУЕМ СООБЩЕНИЕ
+                lines = [
+                    "🔔 **Ежедневная рассылка**",
+                    f"📅 Расписание на **{date_str}**",
+                    "",
+                    schedule_text,
+                ]
 
-                        deadline_date = date(today.year, month, day)
-
-                        print(
-                            f"   Проверка ДЗ: {hw.subject} | {hw.deadline} -> "
-                            f"{deadline_date} (сегодня: {today})"
-                        )
-
-                        # Пропускаем ДЗ из прошлого (дедлайн строго раньше сегодня)
-                        if deadline_date < today:
-                            print(f"      ⏭️ Пропускаем (дедлайн в прошлом: {deadline_date} < {today})")
-                            continue
-
-                        has_homework = True
-
-                        emoji = "📌"
-                        if deadline_date <= three_days_later:
-                            emoji = "🔴"
-
-                        message_parts.append(f"{emoji} **{hw.subject}**{emoji}\n")
-                        message_parts.append(f"   📝 {hw.description}\n")
-                        message_parts.append(f"   📅 Дедлайн: {hw.deadline}")
-                        if emoji == "🔴":
-                            days_left = (deadline_date - today).days
-                            message_parts.append(f" ⚠️ осталось {days_left} дн.")
-                        message_parts.append("\n\n")
-
-                    except Exception as e:
-                        print(f"   ❌ Ошибка парсинга ДЗ: {hw.deadline} | {e}")
-
-                if not has_homework:
-                    message_parts.append("📭 На ближайшее время ДЗ нет.\n")
-            else:
-                message_parts.append("\n📭 На ближайшее время ДЗ нет.\n")
-
-            # 3. Объявления
-            announcements = db.get_announcements_for_group(group_id)
-            if announcements:
-                message.append("\n📢 **Объявления:**\n")
-                for ann in announcements:
-                    title = ann.get('title', '')
-                    content = ann.get('content', '')
-                    deadline = ann.get('deadline', '')
+                # Домашние задания
+                if homework_items:
+                    lines.append("")
+                    lines.append("📚 **Домашние задания:**")
+                    today = date.today()
+                    three_days_later = today + timedelta(days=3)
                     
-                    message.append(f"📢 {title}\n")
-                    if content:
-                        message.append(f"   {content}\n")
-                    message.append(f"   📅 {deadline}\n\n")
+                    for hw in homework_items:
+                        try:
+                            day_str, month_str = hw.deadline.split("-")[:2]
+                            day, month = int(day_str), int(month_str)
+                            deadline_date = date(today.year, month, day)
+                            if deadline_date < today:
+                                deadline_date = deadline_date.replace(year=deadline_date.year + 1)
+                            if deadline_date <= today:
+                                continue
+                            
+                            emoji = "📌"
+                            if deadline_date <= three_days_later:
+                                emoji = "🔴"
+                            days_left = (deadline_date - today).days
+                            
+                            lines.append(f"{emoji} **{hw.subject}**")
+                            lines.append(f"   📝 {hw.description}")
+                            lines.append(f"   📅 Дедлайн: {hw.deadline} (осталось {days_left} дн.)")
+                            lines.append("")
+                        except Exception as e:
+                            print(f"   Ошибка парсинга ДЗ: {hw.deadline} | {e}")
+                else:
+                    lines.append("")
+                    lines.append("📭 На ближайшее время ДЗ нет.")
 
-            message_parts.append("\n---\n")
-            message_parts.append("✅ Следите за обновлениями!")
+                # Объявления
+                if announcements:
+                    lines.append("")
+                    lines.append("📢 **Объявления:**")
+                    for ann in announcements:
+                        title = ann.get('title', '')
+                        content = ann.get('content', '')
+                        deadline = ann.get('deadline', '')
+                        
+                        lines.append(f"📢 {title}")
+                        if content:
+                            lines.append(f"   {content}")
+                        lines.append(f"   📅 {deadline}")
+                        lines.append("")
+                else:
+                    lines.append("")
+                    lines.append("📭 Объявлений нет.")
 
-            await bot.send_message(chat_id=chat_id, text="".join(message_parts))
+                lines.append("---")
+                lines.append("✅ Следите за обновлениями!")
 
-        except Exception as e:
-            print(f"   Ошибка при отправке пользователю {chat_id}: {e}")
+                # Отправляем
+                full_message = "\n".join(lines)
+                await context.bot.send_message(chat_id=chat_id, text=full_message)
+                sent_count += 1
 
-    print(f"✅ Рассылка завершена. Отправлено {len(subscribers)} пользователям.")
+            except Exception as e:
+                print(f"   Ошибка при отправке пользователю {chat_id}: {e}")
+
+        print(f"✅ Рассылка завершена. Отправлено {sent_count} пользователям.")
+
+    except Exception as e:
+        print(f"❌ Ошибка в рассылке: {e}")
 
 
 def register(application) -> None:

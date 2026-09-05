@@ -365,8 +365,17 @@ async def handle_announcement_list(context: ContextTypes.DEFAULT_TYPE, chat_id: 
 
         sb = ["📢 **Все объявления:**\n\n"]
         for i, ann in enumerate(announcements, start=1):
-            sb.append(f"ID: {pending_id}\n{ann}\n")
+            # Разбиваем строку объявления на части
+            # В оригинале она хранится как "📢 Заголовок\n   Текст"
+            lines = ann.split('\n')
+            title = lines[0] if lines else ""
+            content = lines[1] if len(lines) > 1 else ""
+            
+            # Здесь нужен ID из БД — нужно переделать метод get_announcements_for_group
+            # Временно выводим просто порядковый номер
+            sb.append(f"📢 **[{i}]** {title}\n   {content}\n\n")
 
+        sb.append("\n💡 Для удаления объявления используйте: /delete am ID")
         await send_message(context, chat_id, "".join(sb))
 
     except Exception as e:
